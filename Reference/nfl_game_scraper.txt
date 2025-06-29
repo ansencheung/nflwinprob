@@ -1,0 +1,159 @@
+{
+ "cells": [
+  {
+   "cell_type": "markdown",
+   "metadata": {},
+   "source": [
+    "# NFL Game Win Probability Scraper\n",
+    "This script scrapes win probability data (`wnPrb`) and associated play details (`plys`) from ESPN NFL game pages. It takes a game ID as input, extracts the `wnPrb` and `plys` JSON data, matches them by ID, and outputs a matrix with `id`, `prd`, `clck`, and `wnPrb.pts`."
+   ]
+  },
+  {
+   "cell_type": "code",
+   "execution_count": null,
+   "metadata": {},
+   "outputs": [],
+   "source": [
+    "# Block 1: Import required libraries\n",
+    "from selenium import webdriver\n",
+    "from selenium.webdriver.chrome.service import Service\n",
+    "from selenium.webdriver.common.by import By\n",
+    "import json\n",
+    "import pandas as pd\n",
+    "import re\n",
+    "import time\n",
+    "\n",
+    "# Set up Chrome options to suppress unnecessary logging\n",
+    "options = webdriver.ChromeOptions()\n",
+    "options.add_experimental_option('excludeSwitches', ['enable-logging'])"
+   ]
+  },
+  {
+   "cell_type": "code",
+   "execution_count": null,
+   "metadata": {},
+   "outputs": [],
+   "source": [
+    "# Block 2: Initialize WebDriver and get game page\n",
+    "def init_driver(game_id):\n",
+    "    # Replace with your chromedriver path\n",
+    "    service = Service('../chromedriver_win32_107/chromedriver.exe')  # Update path as needed\n",
+    "    driver = webdriver.Chrome(service=service, options=options)\n",
+    "    url = f'https://www.espn.com/nfl/game/_/gameId/{game_id}'\n",
+    "    driver.get(url)\n",
+    "    time.sleep(2)  # Allow page to load\n",
+    "    return driver"
+   ]
+  },
+  {
+   "cell_type": "code",
+   "execution_count": null,
+   "metadata": {},
+   "outputs": [],
+   "source": [
+    "# Block 3: Extract JSON data from page source\n",
+    "def extract_json_data(driver):\n",
+    "    # Get page source\n",
+    "    page_source = driver.page_source\n",
+    "    \n",
+    "    # Find the script tag containing the window['__espnfitt__'] data\n",
+    "    script_tag = driver.find_element(By.XPATH, \"//script[contains(text(), 'window[\\\"__espnfitt__\\\"]')]\")\n",
+    "    script_content = script_tag.get_attribute('text')\n",
+    "    \n",
+    "    # Extract JSON data using regex\n",
+    "    json_match = re.search(r'window\\[\"__espnfitt__\"\\]=(\\{.*?\\});', script_content, re.DOTALL)\n",
+    "    if not json_match:\n",
+    "        raise ValueError(\"Could not find JSON data in page source\")\n",
+    "    \n",
+    "    json_data = json.loads(json_match.group(1))\n",
+    "    return json_data"
+   ]
+  },
+  {
+   "cell_type": "code",
+   "execution_count": null,
+   "metadata": {},
+   "outputs": [],
+   "source": [
+    "# Block 4: Parse win probability and play data\n",
+    "def parse_game_data(json_data):\n",
+    "    # Extract wnPrb and plys data\n",
+    "    wn_prb = json_data.get('page', {}).get('content', {}).get('gamepackage', {}).get('wnPrb', {}).get('pts', {})\n",
+    "    plys = json_data.get('page', {}).get('content', {}).get('gamepackage', {}).get('plys', [])\n",
+    "    \n",
+    "    # Create list to store results\n",
+    "    result = []\n",
+    "    \n",
+    "    # Match wnPrb entries with plys by id\n",
+    "    for play_id, win_prob in wn_prb.items():\n",
+    "        for play in plys:\n",
+    "            if play.get('id') == play_id:\n",
+    "                result.append({\n",
+    "                    'id': play_id,\n",
+    "                    'prd': play.get('prd', 0),\n",
+    "                    'clck': play.get('clck', ''),\n",
+    "                    'wnPrb_pts': win_prob\n",
+    "                })\n",
+    "                break\n",
+    "    \n",
+    "    return result"
+   ]
+  },
+  {
+   "cell_type": "code",
+   "execution_count": null,
+   "metadata": {},
+   "outputs": [],
+   "source": [
+    "# Block 5: Main function to run the scraper\n",
+    "def scrape_game_data(game_id):\n",
+    "    driver = init_driver(game_id)\n",
+    "    try:\n",
+    "        json_data = extract_json_data(driver)\n",
+    "        result = parse_game_data(json_data)\n",
+    "        \n",
+    "        # Convert to DataFrame for matrix-like output\n",
+    "        df = pd.DataFrame(result, columns=['id', 'prd', 'clck', 'wnPrb_pts'])\n",
+    "        return df\n",
+    "    finally:\n",
+    "        driver.quit()"
+   ]
+  },
+  {
+   "cell_type": "code",
+   "execution_count": null,
+   "metadata": {},
+   "outputs": [],
+   "source": [
+    "# Block 6: Run the scraper with a game ID\n",
+    "game_id = input(\"Enter the game ID (e.g., 401671849): \")\n",
+    "df = scrape_game_data(game_id)\n",
+    "print(df)\n",
+    "\n",
+    "# Optionally save to CSV\n",
+    "df.to_csv(f'game_data_{game_id}.csv', index=False)"
+   ]
+  }
+ ],
+ "metadata": {
+  "kernelspec": {
+   "display_name": "Python 3",
+   "language": "python",
+   "name": "python3"
+  },
+  "language_info": {
+   "codemirror_mode": {
+    "name": "ipython",
+    "version": 3
+   },
+   "file_extension": ".py",
+   "mimetype": "text/x-python",
+   "name": "python",
+   "nbconvert_exporter": "python",
+   "pygments_lexer": "ipython3",
+   "version": "3.8.0"
+  }
+ },
+ "nbformat": 4,
+ "nbformat_minor": 4
+}
